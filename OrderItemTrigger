@@ -1,0 +1,36 @@
+trigger OrderItemTrigger on OrderItem (after insert, after update, after delete) {
+    
+    Set<Id> setOrderIds = new Set<Id>(); 
+    Set<Id> setOppIds = new Set<Id>();
+    Map<Id, Integer> mapOrderItemInOrder = new Map<Id, Integer>();
+    List<Order> lstOrders = new List<Order>();
+    List<Opportunity> lstOppToUpdate = new List<Opportunity>();
+    
+    for(OrderItem oi : trigger.new){
+		setOrderIds.add(oi.OrderId);        
+    }
+    
+    for(AggregateResult result : [SELECT OrderId, Count(Id) FROM OrderItem Where OrderId IN :setOrderIds group by OrderId]){
+        mapOrderItemInOrder.put((id)result.get('OrderId'), (Integer)result.get('expr0'));
+    }
+    
+    for(Order o : [SELECT Id, Sum_of_related_Order_Products__c, OpportunityId FROM Order WHERE id IN : setOrderIds ]){
+        if(mapOrderItemInOrder != null && mapOrderItemInOrder.containsKey(o.id)){
+            o.Sum_of_related_Order_Products__c = mapOrderItemInOrder.get(o.id);
+            lstOrders.add(o);
+            setOppIds.add(o.OpportunityId);
+        }
+    }
+    
+        
+    for(Opportunity op : [SELECT id, Number_of_Order_Product__c FROM Opportunity WHERE id IN :setOppIds]){
+        for(Order ord : lstOrders){
+            if(ord.OpportunityId == op.Id){
+                op.Number_of_Order_Product__c += ord.Sum_of_related_Order_Products__c;
+            }
+        }
+        lstOppToUpdate.add(op);
+    }
+    
+    update lstOppToUpdate;
+}
