@@ -1,0 +1,54 @@
+/* Баги: 
+1. не меняется число при удалении, если меньше 3ёх Item;
+2. работает только с текущим Order, остальные не учитывает при добавлении или удалении
+*/
+
+trigger OrderItemTrigger on OrderItem (after insert, after update, after delete) {
+    
+    Set<Id> setOrderIds = new Set<Id>(); 
+    Map<Id, Integer> mapOrderToOrderItem = new Map<Id, Integer>();
+    Map<Id, Id> mapOppToOrder = new Map<Id, Id>();
+    Map<Id, Integer> mapOppItem = new Map<Id, Integer>();
+    List<Opportunity> lstOppToUpdate = new List<Opportunity>();
+   
+    if(trigger.isInsert || trigger.isUpdate){
+        
+    	for(OrderItem oi : trigger.new){
+        	setOrderIds.add(oi.OrderId);        
+   		}
+        
+        System.debug('Trigger.new:' + Trigger.new );
+    }else{
+        
+        for(OrderItem oi : trigger.old){
+            setOrderIds.add(oi.OrderId);        
+        }
+        System.debug('Trigger.old:' + Trigger.old );
+    }   
+    
+    for(Order o : [SELECT Id, OpportunityId, (SELECT Id From OrderItems) FROM Order Where Id IN :setOrderIds]){       
+        mapOrderToOrderItem.put(o.Id, o.OrderItems.size());
+        mapOppToOrder.put(o.Id, o.OpportunityId);
+    }
+    
+    for(Id i : setOrderIds){
+        Id key = mapOppToOrder.get(i);
+        Integer value = mapOrderToOrderItem.get(i);
+        
+        if(!mapOppItem.containsKey(key)){
+            mapOppItem.put(key, value);
+            System.debug('New key in MapOpp');
+        }else{
+            mapOppItem.put(key, mapOppItem.get(key) + value);
+            System.debug('Change value');
+        }
+    }
+            
+    for(Opportunity op : [SELECT id, Number_of_Order_Product__c FROM Opportunity WHERE id IN :mapOppItem.keySet()]){
+        op.Number_of_Order_Product__c = mapOppItem.get(op.id);
+        lstOppToUpdate.add(op);
+    }
+    
+    update lstOppToUpdate;
+    
+}
